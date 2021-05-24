@@ -1,22 +1,17 @@
-import {
-  TaskEither,
-  tryCatch,
-  chain,
-  left
-} from 'fp-ts/lib/TaskEither';
-import { Either } from 'fp-ts/lib/Either';
-import { pipe } from 'fp-ts/lib/pipeable';
-
-import {
-  FetchError, NetworkError, ParserError, ResponseError
-} from './error';
+import { TaskEither, tryCatch, chain, left } from "fp-ts/lib/TaskEither";
+import { Either } from "fp-ts/lib/Either";
+import { pipe } from "fp-ts/function";
+import fetch from "cross-fetch";
+import { FetchError, NetworkError, ParserError, ResponseError } from "./error";
 import {
   Parser,
   jsonParser,
   rawParser,
   textParser,
-  voidParser
-} from './parser';
+  voidParser,
+} from "./parser";
+
+global.fetch = fetch;
 
 /** Type of native fetch method */
 export type NativeFetch = (
@@ -50,7 +45,7 @@ function onSuccess<E, T>(
   parser: Parser<T>
 ): TaskEither<FetchError<E>, T> {
   return tryCatch(
-    async () => parser(response),
+    () => parser(response),
     (error) => new ParserError((error as Error).message)
   );
 }
@@ -61,15 +56,18 @@ function onFailure<E, T>(
 ): TaskEither<FetchError<E>, T> {
   return pipe(
     tryCatch(
-      async () => parser(response).then(
-        (body) => new ResponseError(response.statusText, response.status, body)
-      ),
-      (error) => new ResponseError(
-        response.statusText,
-        response.status,
-        null as E | null,
-        new ParserError((error as Error).message)
-      )
+      () =>
+        parser(response).then(
+          (body) =>
+            new ResponseError(response.statusText, response.status, body)
+        ),
+      (error) =>
+        new ResponseError(
+          response.statusText,
+          response.status,
+          null as E | null,
+          new ParserError((error as Error).message)
+        )
     ),
     chain((e) => left<ResponseError<E>>(e))
   );
@@ -78,21 +76,21 @@ function onFailure<E, T>(
 /**
  * Custom fetch helper creator
  */
-export function fetchCustom<E, A>(
-  options: FetchOptions<E, A>
-): Fetch<E, A> {
+export function fetchCustom<E, A>(options: FetchOptions<E, A>): Fetch<E, A> {
   const { errorParser, parser, fetch = globalThis.fetch } = options;
 
-  return (url: RequestInfo, init?: RequestInit): FetchTask<E, A> => pipe(
-    tryCatch(
-      async () => fetch(url, init),
-      (error) => new NetworkError((error as Error).message)
-    ),
-    chain((response: Response) => (
-      response.ok
-        ? onSuccess(response, parser)
-        : onFailure(response, errorParser)))
-  );
+  return (url: RequestInfo, init?: RequestInit): FetchTask<E, A> =>
+    pipe(
+      tryCatch(
+        () => fetch(url, init),
+        (error) => new NetworkError((error as Error).message)
+      ),
+      chain((response: Response) =>
+        response.ok
+          ? onSuccess(response, parser)
+          : onFailure(response, errorParser)
+      )
+    );
 }
 
 /**
@@ -105,7 +103,7 @@ export function fetchRaw(
 ): FetchTask<Response, Response> {
   return fetchCustom({
     parser: rawParser,
-    errorParser: rawParser
+    errorParser: rawParser,
   })(url, init);
 }
 
@@ -118,7 +116,7 @@ export function fetchJSON<E, T>(
 ): FetchTask<E, T> {
   return fetchCustom<E, T>({
     parser: jsonParser,
-    errorParser: jsonParser
+    errorParser: jsonParser,
   })(url, init);
 }
 
@@ -131,7 +129,7 @@ export function fetchText(
 ): FetchTask<string, string> {
   return fetchCustom({
     parser: textParser,
-    errorParser: textParser
+    errorParser: textParser,
   })(url, init);
 }
 
@@ -145,6 +143,6 @@ export function fetchVoid(
 ): FetchTask<void, void> {
   return fetchCustom({
     parser: voidParser,
-    errorParser: voidParser
+    errorParser: voidParser,
   })(url, init);
 }

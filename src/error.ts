@@ -50,3 +50,4 @@ export type FetchError<E = never> =
   | NetworkError
   | ParserError
   | ResponseError<E>;
+
